@@ -13,6 +13,7 @@ namespace pendarlab::lib::comm
     MavlinkEndpointToken(MavlinkEndpointToken&&) noexcept;            // Declare move constructor which will be defined as default
     MavlinkEndpointToken& operator=(MavlinkEndpointToken&&) noexcept; // Declare move assignment which will be defined as default
     ~MavlinkEndpointToken();
+    void release();
     unsigned int getID() const;
 
   private:

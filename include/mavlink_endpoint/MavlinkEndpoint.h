@@ -21,7 +21,6 @@ namespace pendarlab::lib::comm
     ~MavlinkEndpoint();
     
     std::unique_ptr<MavlinkEndpointToken> createListener(std::function<void(const MavlinkEndpointPacket&)> listener_cb);
-    bool removeListener(const MavlinkEndpointToken& token);
     int writeMessage(const mavlink_message_t& msg);
     bool connect(const std::string& type, const std::unordered_map<std::string, std::string>& cfg);
     bool disconnect();
@@ -31,6 +30,8 @@ namespace pendarlab::lib::comm
 
   private:
     MavlinkEndpoint();
+    friend class MavlinkEndpointToken;
+    bool removeListener(const int& token_id);
     struct MavlinkEndpointImpl;
     std::unique_ptr<MavlinkEndpointImpl> p_impl_;
   };

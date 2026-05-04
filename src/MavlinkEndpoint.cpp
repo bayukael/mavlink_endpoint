@@ -150,16 +150,6 @@ namespace pendarlab::lib::comm
     return token;
   }
 
-  bool MavlinkEndpoint::removeListener(const MavlinkEndpointToken& token)
-  {
-    int result;
-    {
-      std::lock_guard lock(p_impl_->registry_mtx_);
-      result = p_impl_->listener_cb_registry_.erase(token.getID());
-    }
-    return result > 0 ? true : false;
-  }
-
   int MavlinkEndpoint::writeMessage(const mavlink_message_t& msg)
   {
     uint8_t write_buffer[300]; // A Mavlink message might contain maximum 280 bytes. We put 300 because this is SPARTAAA.
@@ -245,6 +235,16 @@ namespace pendarlab::lib::comm
   {
     std::lock_guard lock(p_impl_->state_mtx_);
     return p_impl_->state_;
+  }
+
+  bool MavlinkEndpoint::removeListener(const int& token_id)
+  {
+    int result;
+    {
+      std::lock_guard lock(p_impl_->registry_mtx_);
+      result = p_impl_->listener_cb_registry_.erase(token_id);
+    }
+    return result > 0 ? true : false;
   }
 
 } // namespace pendarlab::lib::comm
