@@ -12,9 +12,34 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
+#include <iostream>
 
 namespace pendarlab::lib::comm
 {
+  struct TripleLock{
+    std::unique_lock<std::mutex> lk1_;
+    std::unique_lock<std::mutex> lk2_;
+    std::unique_lock<std::mutex> lk3_;
+
+    TripleLock(std::mutex& m1, std::mutex& m2, std::mutex& m3);
+    void lock();
+    void unlock();
+  };
+
+  TripleLock::TripleLock(std::mutex& m1, std::mutex& m2, std::mutex& m3) : lk1_(m1, std::defer_lock), lk2_(m2, std::defer_lock), lk3_(m3, std::defer_lock){
+    std::lock(lk1_, lk2_, lk3_);
+  }
+
+  void TripleLock::lock(){
+    std::lock(lk1_, lk2_, lk3_);
+  }
+
+  void TripleLock::unlock(){
+    lk1_.unlock();
+    lk2_.unlock();
+    lk3_.unlock();
+  }
+
   struct MavlinkEndpoint::MavlinkEndpointImpl {
     MavlinkEndpointImpl();
     MavlinkEndpointImpl(MavlinkEndpointImpl&&) = default;
@@ -25,8 +50,10 @@ namespace pendarlab::lib::comm
     void listeningRoutine();
     std::optional<MavlinkEndpointPacket> processMavlinkMsgByte(uint8_t c);
     void setState(const MavlinkEndpointState& s);
+    bool keepRunning();
 
-    std::atomic<bool> keep_running_;
+    std::mutex running_mtx_;
+    bool keep_running_;
     std::condition_variable_any listening_thread_cv_;
     std::mutex registry_mtx_;
     std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> listener_cb_registry_;
@@ -45,7 +72,11 @@ namespace pendarlab::lib::comm
   }
 
   MavlinkEndpoint::MavlinkEndpointImpl::~MavlinkEndpointImpl(){
-    keep_running_ = false;
+    {
+      std::unique_lock lock(running_mtx_);
+      keep_running_ = false;
+    }
+    listening_thread_cv_.notify_one();
     if(listening_thread_.joinable()){
       listening_thread_.join();
     }
@@ -53,13 +84,13 @@ namespace pendarlab::lib::comm
 
   void MavlinkEndpoint::MavlinkEndpointImpl::waitForConnectionAndListener()
   {
-    std::scoped_lock lock(registry_mtx_, connection_mtx_);
+    TripleLock lock(registry_mtx_, connection_mtx_, running_mtx_);
     listening_thread_cv_.wait(lock, [&]{return (!keep_running_ || ( !listener_cb_registry_.empty() && byte_transport_!=nullptr));});
   }
 
   void MavlinkEndpoint::MavlinkEndpointImpl::listeningRoutine()
   {
-    while (keep_running_) {
+    while (keepRunning()) {
       waitForConnectionAndListener();
 
       while (true) {
@@ -73,7 +104,7 @@ namespace pendarlab::lib::comm
           std::lock_guard lock(registry_mtx_);
           registry = listener_cb_registry_;
         }
-        if (!keep_running_ || !transport || registry.empty()) { // If transport does not exist or registry is empty
+        if (!keepRunning() || !transport || registry.empty()) { // If transport does not exist or registry is empty
           break;
         }
 
@@ -124,6 +155,11 @@ namespace pendarlab::lib::comm
   {
     std::lock_guard lock(state_mtx_);
     state_ = s;
+  }
+
+  bool MavlinkEndpoint::MavlinkEndpointImpl::keepRunning(){
+    std::lock_guard lock(running_mtx_);
+    return keep_running_;
   }
 
   std::shared_ptr<MavlinkEndpoint> MavlinkEndpoint::create()
