@@ -36,6 +36,8 @@ namespace pendarlab::lib::comm
     mavlink_endpoint_.reset();
   }
 
+  unsigned MavlinkEndpointToken::MavlinkEndpointTokenImpl::next_id_(0);
+
   MavlinkEndpointToken::MavlinkEndpointToken(const std::weak_ptr<MavlinkEndpoint>& p) :
       p_impl_(std::make_unique<MavlinkEndpointTokenImpl>(p))
   {
