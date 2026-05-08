@@ -67,7 +67,7 @@ namespace pendarlab::lib::comm
   };
 
   MavlinkEndpoint::MavlinkEndpointImpl::MavlinkEndpointImpl() :
-      keep_running_(true), listening_thread_(&MavlinkEndpointImpl::listeningRoutine, this), state_(MavlinkEndpointState::DISCONNECTED)
+      keep_running_(true), listening_thread_(&MavlinkEndpointImpl::listeningRoutine, this), state_(MavlinkEndpointState::DISCONNECTED), msg_buffer_{0}, stat_buffer_{0}
   {
   }
 
