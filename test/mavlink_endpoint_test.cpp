@@ -45,10 +45,12 @@ pendarlab::lib::comm::ByteTransportFactory::ValidationResult
 
 int MockByteTransport::read(unsigned char* buf, unsigned int buf_size)
 {
+  auto time_to_wake_up = std::chrono::steady_clock::now() + std::chrono::milliseconds(1);
   mavlink_heartbeat_t heartbeat_msg = { 0 };
   mavlink_message_t msg;
   mavlink_msg_heartbeat_encode(1, 1, &msg, &heartbeat_msg);
   unsigned int len = mavlink_msg_to_send_buffer(buf, &msg); // 12 bytes of packet header + 9 bytes of heartbeat payload = 21 bytes
+  std::this_thread::sleep_until(time_to_wake_up);
 
   return len;
 }
@@ -63,11 +65,14 @@ class MockCallback : public std::enable_shared_from_this<MockCallback>
 public:
   static std::shared_ptr<MockCallback> create();
   static void theCallback(std::weak_ptr<MockCallback> worker, const MavlinkEndpointPacket& packet);
+  static void listeningCallback(std::weak_ptr<MockCallback> worker, const MavlinkEndpointPacket& packet);
   bool isHasBeenCalled();
+  MavlinkEndpointPacket latestPacket();
 
 private:
   MockCallback();
   bool has_been_called_;
+  MavlinkEndpointPacket latest_packet_;
 };
 
 std::shared_ptr<MockCallback> MockCallback::create()
@@ -87,9 +92,22 @@ void MockCallback::theCallback(std::weak_ptr<MockCallback> worker, const Mavlink
   }
 }
 
+void MockCallback::listeningCallback(std::weak_ptr<MockCallback> worker, const MavlinkEndpointPacket& packet)
+{
+  auto self = worker.lock();
+  if (self) {
+    self->latest_packet_ = packet;
+  }
+}
+
 bool MockCallback::isHasBeenCalled()
 {
   return has_been_called_;
+}
+
+MavlinkEndpointPacket MockCallback::latestPacket()
+{
+  return latest_packet_;
 }
 
 class MavlinkEndpointTestSetup
@@ -178,7 +196,7 @@ TEST_F(MavlinkEndpointCallbackAndTokenTest, NoRegisteredCallbackShouldBeInvokedW
 TEST_F(MavlinkEndpointCallbackAndTokenTest, AllRegisteredCallbacksShouldBeInvokedWhenConnected)
 {
   mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
-  std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Wait for 1s
+  std::this_thread::sleep_for(std::chrono::milliseconds(5)); // Wait for 5 ms
   for (size_t i = 0; i < num_of_cb_; i++) {
     EXPECT_EQ(v_mock_callback_[i]->isHasBeenCalled(), true);
   }
@@ -188,23 +206,67 @@ TEST_F(MavlinkEndpointCallbackAndTokenTest, RegisterCallbackWhenConnectedShouldW
 {
   mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
   v_mock_callback_.push_back(MockCallback::create());
+  ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
   auto token = mav_ep_->createListener(std::bind(&MockCallback::theCallback, v_mock_callback_[num_of_cb_], std::placeholders::_1));
   v_token_.push_back(std::move(token));
-  EXPECT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
   EXPECT_EQ(mav_ep_->getNumOfListener(), num_of_cb_ + 1);
-  std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Wait for 1s
+  std::this_thread::sleep_for(std::chrono::milliseconds(5)); // Wait for 5 ms
   EXPECT_EQ(v_mock_callback_[num_of_cb_]->isHasBeenCalled(), true);
 }
 
-// TODO:
-//  # Test MavlinkEndpointState: DISCONNECTED, CONNECTING, CONNECTED, DISCONNECTING
-//  # Test callback should not be called when not CONNECTED
-//  # Test callback should be called when CONNECTED
-//  - Test register callback in all states should be successful
-//  - Test unregister callback in all states should be successful
-//  - Test deleting token should unregister the associated callback
-//  - Test Mavlink data received by mavlink endpoint should be parsed properly
-//  - Test Mavlink data sent by mavlink endpoint should be written properly
+TEST_F(MavlinkEndpointCallbackAndTokenTest, UnregisterCallbackWhenDisconnectedShouldWork)
+{
+  ASSERT_EQ(mav_ep_->getNumOfListener(), num_of_cb_);
+  auto token = std::move(v_token_.back());
+  token->release();
+  EXPECT_EQ(mav_ep_->getNumOfListener(), num_of_cb_ - 1);
+}
+
+TEST_F(MavlinkEndpointCallbackAndTokenTest, UnregisterCallbackWhenConnectedShouldWork)
+{
+  ASSERT_EQ(mav_ep_->getNumOfListener(), num_of_cb_);
+  mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+  auto token = std::move(v_token_.back());
+  token->release();
+  EXPECT_EQ(mav_ep_->getNumOfListener(), num_of_cb_ - 1);
+}
+
+TEST_F(MavlinkEndpointCallbackAndTokenTest, DeletingTokenShouldUnregisterAssociatedCallback)
+{
+  ASSERT_EQ(mav_ep_->getNumOfListener(), num_of_cb_);
+  int token_id = v_token_.back()->getID();
+  v_token_.pop_back();
+  size_t current_num_of_cb = num_of_cb_ - 1;
+  EXPECT_EQ(mav_ep_->getNumOfListener(), current_num_of_cb);
+  for (size_t i = 0; i < current_num_of_cb; i++) {
+    EXPECT_NE(v_token_[i]->getID(), token_id);
+  }
+}
+
+class MavlinkEndpointTransmissionTest : public testing::Test, public MavlinkEndpointTestSetup
+{
+protected:
+  void SetUp() override
+  {
+    mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+    ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
+  }
+  void TearDown() override {}
+
+  std::shared_ptr<MockCallback> mock_callback_;
+  std::unique_ptr<MavlinkEndpointToken> token_;
+};
+
+TEST_F(MavlinkEndpointTransmissionTest, IncomingHeartbeatMessageShouldBeParsedProperly)
+{
+  EXPECT_EQ(mock_callback_->latestPacket().msg.msgid, 0);
+  EXPECT_EQ(mock_callback_->latestPacket().msg.sysid, 0);
+  mock_callback_ = MockCallback::create();
+  token_ = mav_ep_->createListener(std::bind(&MockCallback::listeningCallback, mock_callback_, std::placeholders::_1));
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  EXPECT_EQ(mock_callback_->latestPacket().msg.msgid, MAVLINK_MSG_ID_HEARTBEAT);
+  EXPECT_EQ(mock_callback_->latestPacket().msg.sysid, 1);
+}
 
 int main(int argc, char* argv[])
 {
