@@ -80,7 +80,7 @@ std::shared_ptr<MockCallback> MockCallback::create()
   return std::make_shared<MockCallback>(MockCallback());
 }
 
-MockCallback::MockCallback() : has_been_called_(false)
+MockCallback::MockCallback() : has_been_called_(false), latest_packet_{0}
 {
 }
 
@@ -248,6 +248,7 @@ class MavlinkEndpointTransmissionTest : public testing::Test, public MavlinkEndp
 protected:
   void SetUp() override
   {
+    mock_callback_ = MockCallback::create();
     mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
     ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
   }
@@ -266,6 +267,29 @@ TEST_F(MavlinkEndpointTransmissionTest, IncomingHeartbeatMessageShouldBeParsedPr
   std::this_thread::sleep_for(std::chrono::milliseconds(5));
   EXPECT_EQ(mock_callback_->latestPacket().msg.msgid, MAVLINK_MSG_ID_HEARTBEAT);
   EXPECT_EQ(mock_callback_->latestPacket().msg.sysid, 1);
+}
+
+TEST_F(MavlinkEndpointTransmissionTest, SendingHeartbeatMessageWhenDisconnectedShouldReturnNegativeOne)
+{
+  mav_ep_->disconnect();
+  ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::DISCONNECTED);
+
+  mavlink_heartbeat_t heartbeat_msg = { 0 };
+  mavlink_message_t msg;
+  mavlink_msg_heartbeat_encode(1, 1, &msg, &heartbeat_msg);
+
+  int write_result = mav_ep_->writeMessage(msg);
+  EXPECT_EQ(write_result, -1);
+}
+
+TEST_F(MavlinkEndpointTransmissionTest, SendingHeartbeatMessageWhenConnectedShouldReturn21)
+{
+  mavlink_heartbeat_t heartbeat_msg = { 0 };
+  mavlink_message_t msg;
+  mavlink_msg_heartbeat_encode(1, 1, &msg, &heartbeat_msg);
+
+  int write_result = mav_ep_->writeMessage(msg);
+  EXPECT_EQ(write_result, 21); // 21 is the number of bytes encoded in a mavlink heartbeat message
 }
 
 int main(int argc, char* argv[])
