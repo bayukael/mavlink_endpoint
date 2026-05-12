@@ -138,6 +138,16 @@ TEST_F(MavlinkEndpointInitialTest, InitialListenerShouldBeZero)
   EXPECT_EQ(listeners_id.empty(), true);
 }
 
+TEST_F(MavlinkEndpointInitialTest, ValidateConfigReturnsTrueForExistingType)
+{
+  EXPECT_EQ(MavlinkEndpoint::validateConfig("MockTransport", std::unordered_map<std::string,std::string>()).ok, true);
+}
+
+TEST_F(MavlinkEndpointInitialTest, ValidateConfigReturnsFalseForNonExistantType)
+{
+  EXPECT_EQ(MavlinkEndpoint::validateConfig("NonExistantTransport", std::unordered_map<std::string,std::string>()).ok, false);
+}
+
 class MavlinkEndpointConnectionTest : public testing::Test, public MavlinkEndpointTestSetup
 {
 protected:

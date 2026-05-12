@@ -12,11 +12,10 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
-#include <iostream>
 
 namespace pendarlab::lib::comm
 {
-  struct TripleLock{
+  struct TripleLock {
     std::unique_lock<std::mutex> lk1_;
     std::unique_lock<std::mutex> lk2_;
     std::unique_lock<std::mutex> lk3_;
@@ -26,15 +25,19 @@ namespace pendarlab::lib::comm
     void unlock();
   };
 
-  TripleLock::TripleLock(std::mutex& m1, std::mutex& m2, std::mutex& m3) : lk1_(m1, std::defer_lock), lk2_(m2, std::defer_lock), lk3_(m3, std::defer_lock){
+  TripleLock::TripleLock(std::mutex& m1, std::mutex& m2, std::mutex& m3) :
+      lk1_(m1, std::defer_lock), lk2_(m2, std::defer_lock), lk3_(m3, std::defer_lock)
+  {
     std::lock(lk1_, lk2_, lk3_);
   }
 
-  void TripleLock::lock(){
+  void TripleLock::lock()
+  {
     std::lock(lk1_, lk2_, lk3_);
   }
 
-  void TripleLock::unlock(){
+  void TripleLock::unlock()
+  {
     lk1_.unlock();
     lk2_.unlock();
     lk3_.unlock();
@@ -67,17 +70,22 @@ namespace pendarlab::lib::comm
   };
 
   MavlinkEndpoint::MavlinkEndpointImpl::MavlinkEndpointImpl() :
-      keep_running_(true), listening_thread_(&MavlinkEndpointImpl::listeningRoutine, this), state_(MavlinkEndpointState::DISCONNECTED), msg_buffer_{0}, stat_buffer_{0}
+      keep_running_(true),
+      listening_thread_(&MavlinkEndpointImpl::listeningRoutine, this),
+      state_(MavlinkEndpointState::DISCONNECTED),
+      msg_buffer_{ 0 },
+      stat_buffer_{ 0 }
   {
   }
 
-  MavlinkEndpoint::MavlinkEndpointImpl::~MavlinkEndpointImpl(){
+  MavlinkEndpoint::MavlinkEndpointImpl::~MavlinkEndpointImpl()
+  {
     {
       std::unique_lock lock(running_mtx_);
       keep_running_ = false;
     }
     listening_thread_cv_.notify_one();
-    if(listening_thread_.joinable()){
+    if (listening_thread_.joinable()) {
       listening_thread_.join();
     }
   }
@@ -85,7 +93,7 @@ namespace pendarlab::lib::comm
   void MavlinkEndpoint::MavlinkEndpointImpl::waitForConnectionAndListener()
   {
     TripleLock lock(registry_mtx_, connection_mtx_, running_mtx_);
-    listening_thread_cv_.wait(lock, [&]{return (!keep_running_ || ( !listener_cb_registry_.empty() && byte_transport_!=nullptr));});
+    listening_thread_cv_.wait(lock, [&] { return (!keep_running_ || (!listener_cb_registry_.empty() && byte_transport_ != nullptr)); });
   }
 
   void MavlinkEndpoint::MavlinkEndpointImpl::listeningRoutine()
@@ -157,7 +165,8 @@ namespace pendarlab::lib::comm
     state_ = s;
   }
 
-  bool MavlinkEndpoint::MavlinkEndpointImpl::keepRunning(){
+  bool MavlinkEndpoint::MavlinkEndpointImpl::keepRunning()
+  {
     std::lock_guard lock(running_mtx_);
     return keep_running_;
   }
@@ -165,6 +174,16 @@ namespace pendarlab::lib::comm
   std::shared_ptr<MavlinkEndpoint> MavlinkEndpoint::create()
   {
     return std::make_shared<MavlinkEndpoint>(MavlinkEndpoint());
+  }
+
+  MavlinkEndpoint::ConfigValidationResult MavlinkEndpoint::validateConfig(const std::string& transport_type,
+                                                                          const std::unordered_map<std::string, std::string>& config)
+  {
+    auto validation_result = ByteTransportFactory::validateConfig(transport_type, config);
+    MavlinkEndpoint::ConfigValidationResult result;
+    result.ok = validation_result.ok;
+    result.msg = validation_result.msg;
+    return result;
   }
 
   MavlinkEndpoint::MavlinkEndpoint(MavlinkEndpoint&&) noexcept = default;
@@ -195,7 +214,7 @@ namespace pendarlab::lib::comm
       std::lock_guard lock(p_impl_->connection_mtx_);
       transport = p_impl_->byte_transport_;
     }
-    if(!transport){
+    if (!transport) {
       return -1;
     }
     int bytes_written = transport->write(write_buffer, len);
@@ -208,12 +227,6 @@ namespace pendarlab::lib::comm
       return false;
     }
     p_impl_->setState(MavlinkEndpointState::CONNECTING);
-
-    auto validation_result = ByteTransportFactory::validateConfig(type, cfg);
-    if (!validation_result.ok) {
-      p_impl_->setState(MavlinkEndpointState::DISCONNECTED);
-      return false;
-    }
 
     auto transport = ByteTransportFactory::create(type, cfg);
     if (!transport) {
