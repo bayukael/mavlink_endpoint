@@ -176,11 +176,11 @@ namespace pendarlab::lib::comm
     return std::make_shared<MavlinkEndpoint>(MavlinkEndpoint());
   }
 
-  MavlinkEndpoint::ConfigValidationResult MavlinkEndpoint::validateConfig(const std::string& transport_type,
+  MavlinkEndpoint::ValidationResult MavlinkEndpoint::validateConfig(const std::string& transport_type,
                                                                           const std::unordered_map<std::string, std::string>& config)
   {
     auto validation_result = ByteTransportFactory::validateConfig(transport_type, config);
-    MavlinkEndpoint::ConfigValidationResult result;
+    MavlinkEndpoint::ValidationResult result;
     result.ok = validation_result.ok;
     result.msg = validation_result.msg;
     return result;

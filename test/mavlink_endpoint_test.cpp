@@ -39,7 +39,6 @@ pendarlab::lib::comm::ByteTransportFactory::ValidationResult
 {
   pendarlab::lib::comm::ByteTransportFactory::ValidationResult res;
   res.ok = true;
-  res.msg = "";
   return res;
 }
 

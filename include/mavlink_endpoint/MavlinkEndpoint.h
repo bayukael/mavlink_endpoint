@@ -15,13 +15,13 @@ namespace pendarlab::lib::comm
   class MavlinkEndpoint : public std::enable_shared_from_this<MavlinkEndpoint>
   {
   public:
-    struct ConfigValidationResult {
+    struct ValidationResult {
       bool ok;
-      std::string msg;
+      std::vector<std::string> msg;
     };
 
     static std::shared_ptr<MavlinkEndpoint> create();
-    static ConfigValidationResult validateConfig(const std::string& transport_type,
+    static ValidationResult validateConfig(const std::string& transport_type,
                                                  const std::unordered_map<std::string, std::string>& config);
 
     MavlinkEndpoint(MavlinkEndpoint&&) noexcept;            // Declare move constructor which will be defined as default
