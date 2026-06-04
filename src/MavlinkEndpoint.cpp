@@ -2,7 +2,7 @@
 
 #include <atomic>
 #include <byte_transport/ByteTransportFactory.h>
-#include <byte_transport/IByteTransport.h>
+#include <byte_transport/ByteTransport.h>
 #include <condition_variable>
 #include <mavlink_endpoint/MavlinkEndpointPacket.h>
 #include <mavlink_endpoint/MavlinkEndpointState.h>
@@ -61,7 +61,7 @@ namespace pendarlab::lib::comm
     std::mutex registry_mtx_;
     std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> listener_cb_registry_;
     std::mutex connection_mtx_;
-    std::shared_ptr<IByteTransport> byte_transport_;
+    std::shared_ptr<ByteTransport> byte_transport_;
     mavlink_message_t msg_buffer_;
     mavlink_status_t stat_buffer_;
     std::mutex state_mtx_;
@@ -102,7 +102,7 @@ namespace pendarlab::lib::comm
       waitForConnectionAndListener();
 
       while (true) {
-        std::shared_ptr<IByteTransport> transport;
+        std::shared_ptr<ByteTransport> transport;
         std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> registry;
         {
           std::lock_guard lock(connection_mtx_);
@@ -209,7 +209,7 @@ namespace pendarlab::lib::comm
   {
     uint8_t write_buffer[300]; // A Mavlink message might contain maximum 280 bytes. We put 300 because this is SPARTAAA.
     unsigned int len = mavlink_msg_to_send_buffer(write_buffer, &msg);
-    std::shared_ptr<IByteTransport> transport;
+    std::shared_ptr<ByteTransport> transport;
     {
       std::lock_guard lock(p_impl_->connection_mtx_);
       transport = p_impl_->byte_transport_;

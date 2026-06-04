@@ -1,5 +1,5 @@
 #include <byte_transport/ByteTransportFactory.h>
-#include <byte_transport/IByteTransport.h>
+#include <byte_transport/ByteTransport.h>
 #include <chrono>
 #include <functional>
 #include <gtest/gtest.h>
@@ -16,12 +16,12 @@ using MavlinkEndpointState = pendarlab::lib::comm::MavlinkEndpointState;
 using MavlinkEndpointToken = pendarlab::lib::comm::MavlinkEndpointToken;
 using MavlinkEndpointPacket = pendarlab::lib::comm::MavlinkEndpointPacket;
 
-class MockByteTransport : public pendarlab::lib::comm::IByteTransport
+class MockByteTransport : public pendarlab::lib::comm::ByteTransport
 {
 public:
   MockByteTransport() = default;
   ~MockByteTransport() = default;
-  static std::unique_ptr<IByteTransport> create(const std::unordered_map<std::string, std::string>& cfg);
+  static std::unique_ptr<ByteTransport> create(const std::unordered_map<std::string, std::string>& cfg);
   static pendarlab::lib::comm::ByteTransportFactory::ValidationResult validateConfig(const std::unordered_map<std::string, std::string>&);
   int read(unsigned char* buf, unsigned int buf_size) override;
   int write(const unsigned char* buf, unsigned int length) override;
@@ -29,7 +29,7 @@ public:
 
 REGISTER_BYTE_TRANSPORT("MockTransport", &MockByteTransport::create, &MockByteTransport::validateConfig);
 
-std::unique_ptr<pendarlab::lib::comm::IByteTransport> MockByteTransport::create(const std::unordered_map<std::string, std::string>& cfg)
+std::unique_ptr<pendarlab::lib::comm::ByteTransport> MockByteTransport::create(const std::unordered_map<std::string, std::string>& cfg)
 {
   return std::make_unique<MockByteTransport>();
 }
