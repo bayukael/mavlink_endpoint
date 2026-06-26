@@ -5,20 +5,23 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
 find_package(GTest CONFIG REQUIRED)
-add_subdirectory(external/byte_transport)
+find_package(PendarlabByteTransport REQUIRED)
 
-add_library(pendarlab_comm_mavlink_endpoint SHARED
+add_library(MavlinkEndpoint SHARED
   src/MavlinkEndpoint.cpp
   src/MavlinkEndpointToken.cpp
 )
-target_include_directories(pendarlab_comm_mavlink_endpoint PUBLIC 
+target_include_directories(MavlinkEndpoint PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> 
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external> 
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/byte_transport/include> 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external>
 )
-target_compile_options(pendarlab_comm_mavlink_endpoint
+target_compile_options(MavlinkEndpoint
   PRIVATE -Wno-address-of-packed-member
 )
+target_link_libraries(MavlinkEndpoint 
+  PUBLIC pendarlab::ByteTransport
+)
+set_target_properties(MavlinkEndpoint PROPERTIES OUTPUT_NAME pendarlab-mavlink_endpoint)
 
 ##################################################################################################################
 ################################################  BUILDING TEST  #################################################
@@ -30,9 +33,9 @@ target_include_directories(mavlink_endpoint_test PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/byte_transport/include> 
 )
 target_link_libraries(mavlink_endpoint_test
-  PRIVATE pendarlab_comm_mavlink_endpoint
+  PRIVATE MavlinkEndpoint
   PRIVATE gtest
-  PRIVATE pendarlab_comm_byte_transport
+  PRIVATE pendarlab::ByteTransport
 )
 target_compile_options(mavlink_endpoint_test
   PRIVATE -Wno-address-of-packed-member

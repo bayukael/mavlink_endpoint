@@ -1,10 +1,11 @@
 #pragma once
+#include "mavlink_endpoint/MavlinkEndpointPacket.h"
+#include "mavlink_endpoint/MavlinkEndpointState.h"
+#include "mavlink_endpoint/MavlinkEndpointToken.h"
 
+#include <byte_transport/RegistryUserAccess.h>
 #include <functional>
 #include <mavlink/common/mavlink.h>
-#include <mavlink_endpoint/MavlinkEndpointPacket.h>
-#include <mavlink_endpoint/MavlinkEndpointState.h>
-#include <mavlink_endpoint/MavlinkEndpointToken.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -20,9 +21,7 @@ namespace pendarlab::lib::comm
       std::vector<std::string> msg;
     };
 
-    static std::shared_ptr<MavlinkEndpoint> create();
-    static ValidationResult validateConfig(const std::string& transport_type,
-                                                 const std::unordered_map<std::string, std::string>& config);
+    static std::shared_ptr<MavlinkEndpoint> create(const byte_transport::RegistryUserAccess&); // To always create MavlinkEndpoint with make_shared
 
     MavlinkEndpoint(MavlinkEndpoint&&) noexcept;            // Declare move constructor which will be defined as default
     MavlinkEndpoint& operator=(MavlinkEndpoint&&) noexcept; // Declare move assignment which will be defined as default
@@ -37,10 +36,10 @@ namespace pendarlab::lib::comm
     MavlinkEndpointState getState();
 
   private:
-    MavlinkEndpoint();
+    MavlinkEndpoint(const byte_transport::RegistryUserAccess&); // Hide this to ensure the instantiation of MavlinkEndpoint is done through MavlinkEndpoint::create()
     friend class MavlinkEndpointToken;
     bool removeListener(const int& token_id);
     struct MavlinkEndpointImpl;
-    std::unique_ptr<MavlinkEndpointImpl> p_impl_;
+    std::unique_ptr<MavlinkEndpointImpl> d;
   };
 } // namespace pendarlab::lib::comm

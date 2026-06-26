@@ -19,6 +19,6 @@ namespace pendarlab::lib::comm
   private:
     MavlinkEndpointToken(const std::weak_ptr<MavlinkEndpoint>& p_mavlink_endpoint);
     struct MavlinkEndpointTokenImpl;
-    std::unique_ptr<MavlinkEndpointTokenImpl> p_impl_;
+    std::unique_ptr<MavlinkEndpointTokenImpl> d;
   };
 } // namespace pendarlab::lib::comm

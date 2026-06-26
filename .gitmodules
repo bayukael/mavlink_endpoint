@@ -1,6 +1,3 @@
 [submodule "external/mavlink"]
 	path = external/mavlink
 	url = git@github.com:mavlink/c_library_v2.git
-[submodule "external/byte_transport"]
-	path = external/byte_transport
-	url = git@github.com:bayukael/byte_transport.git
