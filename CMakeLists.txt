@@ -18,6 +18,8 @@ add_library(MavlinkEndpoint SHARED
 target_include_directories(MavlinkEndpoint PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external>
+    $<INSTALL_INTERFACE:include> 
+    $<INSTALL_INTERFACE:include/${PACKAGE_FILENAME}> 
 )
 target_compile_options(MavlinkEndpoint
   PRIVATE -Wno-address-of-packed-member
@@ -44,6 +46,10 @@ install(
 install(
 	DIRECTORY include/
 	DESTINATION include
+)
+install(
+	DIRECTORY external/
+	DESTINATION include/${PACKAGE_FILENAME}
 )
 install(
 	EXPORT ${TARGET_EXPORT_NAME}
