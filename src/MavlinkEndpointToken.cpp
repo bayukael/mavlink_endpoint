@@ -12,13 +12,13 @@ namespace pendarlab::lib::comm
 
     void unregister();
 
-    static unsigned int next_id_;
-    const unsigned int id_;
-    std::weak_ptr<MavlinkEndpoint> mavlink_endpoint_;
+    static unsigned int next_id;
+    const unsigned int id;
+    std::weak_ptr<MavlinkEndpoint> mavlink_endpoint;
   };
 
   MavlinkEndpointToken::MavlinkEndpointTokenImpl::MavlinkEndpointTokenImpl(const std::weak_ptr<MavlinkEndpoint>& p) :
-      id_(next_id_++), mavlink_endpoint_(p)
+      id(next_id++), mavlink_endpoint(p)
   {
   }
 
@@ -29,17 +29,17 @@ namespace pendarlab::lib::comm
 
   void MavlinkEndpointToken::MavlinkEndpointTokenImpl::unregister()
   {
-    auto endpoint = mavlink_endpoint_.lock();
+    auto endpoint = mavlink_endpoint.lock();
     if (endpoint) {
-      endpoint->removeListener(id_);
+      endpoint->removeListener(id);
     }
-    mavlink_endpoint_.reset();
+    mavlink_endpoint.reset();
   }
 
-  unsigned MavlinkEndpointToken::MavlinkEndpointTokenImpl::next_id_(0);
+  unsigned MavlinkEndpointToken::MavlinkEndpointTokenImpl::next_id(0);
 
   MavlinkEndpointToken::MavlinkEndpointToken(const std::weak_ptr<MavlinkEndpoint>& p) :
-      p_impl_(std::make_unique<MavlinkEndpointTokenImpl>(p))
+      d(std::make_unique<MavlinkEndpointTokenImpl>(p))
   {
   }
 
@@ -57,11 +57,11 @@ namespace pendarlab::lib::comm
 
   unsigned int MavlinkEndpointToken::getID() const
   {
-    return p_impl_->id_;
+    return d->id;
   }
 
   void MavlinkEndpointToken::release()
   {
-    p_impl_->unregister();
+    d->unregister();
   }
 } // namespace pendarlab::lib::comm

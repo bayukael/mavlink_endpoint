@@ -1,5 +1,5 @@
-#include <byte_transport/ByteTransportFactory.h>
-#include <byte_transport/ByteTransport.h>
+#include <byte_transport/Registry.h>
+#include <byte_transport/Transport.h>
 #include <chrono>
 #include <functional>
 #include <gtest/gtest.h>
@@ -15,30 +15,32 @@ using MavlinkEndpoint = pendarlab::lib::comm::MavlinkEndpoint;
 using MavlinkEndpointState = pendarlab::lib::comm::MavlinkEndpointState;
 using MavlinkEndpointToken = pendarlab::lib::comm::MavlinkEndpointToken;
 using MavlinkEndpointPacket = pendarlab::lib::comm::MavlinkEndpointPacket;
+using ByteTransport = pendarlab::lib::comm::byte_transport::Transport;
+using ConfigParseResult = pendarlab::lib::comm::byte_transport::ConfigParseResult;
+using Config = pendarlab::lib::comm::byte_transport::Config;
+using TransportDefinition = pendarlab::lib::comm::byte_transport::TransportDefinition;
+using ByteTransportRegistry = pendarlab::lib::comm::byte_transport::Registry;
 
-class MockByteTransport : public pendarlab::lib::comm::ByteTransport
+class MockByteTransport : public ByteTransport
 {
 public:
   MockByteTransport() = default;
   ~MockByteTransport() = default;
   static std::unique_ptr<ByteTransport> create(const std::unordered_map<std::string, std::string>& cfg);
-  static pendarlab::lib::comm::ByteTransportFactory::ValidationResult validateConfig(const std::unordered_map<std::string, std::string>&);
+  static ConfigParseResult validateConfig(const std::unordered_map<std::string, std::string>&);
   int read(unsigned char* buf, unsigned int buf_size) override;
   int write(const unsigned char* buf, unsigned int length) override;
 };
 
-REGISTER_BYTE_TRANSPORT("MockTransport", &MockByteTransport::create, &MockByteTransport::validateConfig);
-
-std::unique_ptr<pendarlab::lib::comm::ByteTransport> MockByteTransport::create(const std::unordered_map<std::string, std::string>& cfg)
+std::unique_ptr<ByteTransport> MockByteTransport::create(const std::unordered_map<std::string, std::string>& cfg)
 {
   return std::make_unique<MockByteTransport>();
 }
 
-pendarlab::lib::comm::ByteTransportFactory::ValidationResult
-    MockByteTransport::validateConfig(const std::unordered_map<std::string, std::string>&)
+ConfigParseResult MockByteTransport::validateConfig(const std::unordered_map<std::string, std::string>&)
 {
-  pendarlab::lib::comm::ByteTransportFactory::ValidationResult res;
-  res.ok = true;
+  ConfigParseResult res;
+  res.config = Config();
   return res;
 }
 
@@ -58,6 +60,26 @@ int MockByteTransport::write(const unsigned char* buf, unsigned int length)
 {
   return length;
 }
+
+class MockByteTransportDefinition : public TransportDefinition
+{
+  std::unique_ptr<ByteTransport> create(const Config& cfg) const override;
+  ConfigParseResult parseConfig(const std::unordered_map<std::string, std::string>&) const override;
+};
+
+std::unique_ptr<ByteTransport> MockByteTransportDefinition::create(const Config& cfg) const
+{
+  return std::make_unique<MockByteTransport>();
+}
+
+ConfigParseResult MockByteTransportDefinition::parseConfig(const std::unordered_map<std::string, std::string>&) const
+{
+  ConfigParseResult res;
+  res.config = Config();
+  return res;
+}
+
+static MockByteTransportDefinition g_mock_transport_def;
 
 class MockCallback : public std::enable_shared_from_this<MockCallback>
 {
@@ -79,7 +101,7 @@ std::shared_ptr<MockCallback> MockCallback::create()
   return std::make_shared<MockCallback>(MockCallback());
 }
 
-MockCallback::MockCallback() : has_been_called_(false), latest_packet_{0}
+MockCallback::MockCallback() : has_been_called_(false), latest_packet_{ 0 }
 {
 }
 
@@ -112,9 +134,15 @@ MavlinkEndpointPacket MockCallback::latestPacket()
 class MavlinkEndpointTestSetup
 {
 public:
-  MavlinkEndpointTestSetup() : mav_ep_(MavlinkEndpoint::create()) {}
+  MavlinkEndpointTestSetup() : type("mock_transport")
+  {
+    registry.addTransportDefinition(type, g_mock_transport_def);
+    mav_ep_ = MavlinkEndpoint::create(registry);
+  }
+  std::string type;
 
 protected:
+  ByteTransportRegistry registry;
   std::shared_ptr<MavlinkEndpoint> mav_ep_;
 };
 
@@ -139,18 +167,21 @@ TEST_F(MavlinkEndpointInitialTest, InitialListenerShouldBeZero)
 
 TEST_F(MavlinkEndpointInitialTest, ValidateConfigReturnsTrueForExistingType)
 {
-  EXPECT_EQ(MavlinkEndpoint::validateConfig("MockTransport", std::unordered_map<std::string,std::string>()).ok, true);
+  ASSERT_NE(registry[type], nullptr);
+  std::unordered_map<std::string, std::string> empty_config;
+  auto parsed_config = registry[type]->parseConfig(empty_config);
+  EXPECT_EQ(parsed_config.ok(), true);
 }
 
 TEST_F(MavlinkEndpointInitialTest, ValidateConfigReturnsFalseForNonExistantType)
 {
-  EXPECT_EQ(MavlinkEndpoint::validateConfig("NonExistantTransport", std::unordered_map<std::string,std::string>()).ok, false);
+  EXPECT_EQ(registry["NonExistantTransport"], nullptr);
 }
 
 class MavlinkEndpointConnectionTest : public testing::Test, public MavlinkEndpointTestSetup
 {
 protected:
-  void SetUp() override { connect_result_ = mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>()); }
+  void SetUp() override { connect_result_ = mav_ep_->connect(type, std::unordered_map<std::string, std::string>()); }
   void TearDown() override {}
 
   bool connect_result_;
@@ -170,7 +201,7 @@ TEST_F(MavlinkEndpointConnectionTest, DisconnectShouldChangeStateToDisconnected)
 
 TEST_F(MavlinkEndpointConnectionTest, ConnectWhenConnectedReturnsFalse)
 {
-  bool connect_result = mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+  bool connect_result = mav_ep_->connect(type, std::unordered_map<std::string, std::string>());
   EXPECT_EQ(connect_result, false);
 }
 
@@ -204,7 +235,7 @@ TEST_F(MavlinkEndpointCallbackAndTokenTest, NoRegisteredCallbackShouldBeInvokedW
 
 TEST_F(MavlinkEndpointCallbackAndTokenTest, AllRegisteredCallbacksShouldBeInvokedWhenConnected)
 {
-  mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+  mav_ep_->connect(type, std::unordered_map<std::string, std::string>());
   std::this_thread::sleep_for(std::chrono::milliseconds(5)); // Wait for 5 ms
   for (size_t i = 0; i < num_of_cb_; i++) {
     EXPECT_EQ(v_mock_callback_[i]->isHasBeenCalled(), true);
@@ -213,7 +244,7 @@ TEST_F(MavlinkEndpointCallbackAndTokenTest, AllRegisteredCallbacksShouldBeInvoke
 
 TEST_F(MavlinkEndpointCallbackAndTokenTest, RegisterCallbackWhenConnectedShouldWork)
 {
-  mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+  mav_ep_->connect(type, std::unordered_map<std::string, std::string>());
   v_mock_callback_.push_back(MockCallback::create());
   ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
   auto token = mav_ep_->createListener(std::bind(&MockCallback::theCallback, v_mock_callback_[num_of_cb_], std::placeholders::_1));
@@ -234,7 +265,7 @@ TEST_F(MavlinkEndpointCallbackAndTokenTest, UnregisterCallbackWhenDisconnectedSh
 TEST_F(MavlinkEndpointCallbackAndTokenTest, UnregisterCallbackWhenConnectedShouldWork)
 {
   ASSERT_EQ(mav_ep_->getNumOfListener(), num_of_cb_);
-  mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+  mav_ep_->connect(type, std::unordered_map<std::string, std::string>());
   auto token = std::move(v_token_.back());
   token->release();
   EXPECT_EQ(mav_ep_->getNumOfListener(), num_of_cb_ - 1);
@@ -258,7 +289,7 @@ protected:
   void SetUp() override
   {
     mock_callback_ = MockCallback::create();
-    mav_ep_->connect("MockTransport", std::unordered_map<std::string, std::string>());
+    mav_ep_->connect(type, std::unordered_map<std::string, std::string>());
     ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
   }
   void TearDown() override {}

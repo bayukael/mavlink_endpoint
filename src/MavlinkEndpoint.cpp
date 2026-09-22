@@ -1,8 +1,7 @@
 #include "mavlink_endpoint/MavlinkEndpoint.h"
 
 #include <atomic>
-#include <byte_transport/ByteTransportFactory.h>
-#include <byte_transport/ByteTransport.h>
+#include <byte_transport/Transport.h>
 #include <condition_variable>
 #include <mavlink_endpoint/MavlinkEndpointPacket.h>
 #include <mavlink_endpoint/MavlinkEndpointState.h>
@@ -15,6 +14,9 @@
 
 namespace pendarlab::lib::comm
 {
+  using ByteTransport = byte_transport::Transport;
+  using RegistryUserAccess = byte_transport::RegistryUserAccess;
+
   struct TripleLock {
     std::unique_lock<std::mutex> lk1_;
     std::unique_lock<std::mutex> lk2_;
@@ -44,7 +46,7 @@ namespace pendarlab::lib::comm
   }
 
   struct MavlinkEndpoint::MavlinkEndpointImpl {
-    MavlinkEndpointImpl();
+    MavlinkEndpointImpl(const RegistryUserAccess& reg);
     MavlinkEndpointImpl(MavlinkEndpointImpl&&) = default;
     MavlinkEndpointImpl& operator=(MavlinkEndpointImpl&&) = default;
     ~MavlinkEndpointImpl();
@@ -55,45 +57,47 @@ namespace pendarlab::lib::comm
     void setState(const MavlinkEndpointState& s);
     bool keepRunning();
 
-    std::mutex running_mtx_;
-    bool keep_running_;
-    std::condition_variable_any listening_thread_cv_;
-    std::mutex registry_mtx_;
-    std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> listener_cb_registry_;
-    std::mutex connection_mtx_;
-    std::shared_ptr<ByteTransport> byte_transport_;
-    mavlink_message_t msg_buffer_;
-    mavlink_status_t stat_buffer_;
-    std::mutex state_mtx_;
-    MavlinkEndpointState state_;
-    std::thread listening_thread_;
+    const RegistryUserAccess& registry;
+    std::mutex running_mtx;
+    bool keep_running;
+    std::condition_variable_any listening_thread_cv;
+    std::mutex registry_mtx;
+    std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> listener_cb_registry;
+    std::mutex connection_mtx;
+    std::shared_ptr<ByteTransport> byte_transport;
+    mavlink_message_t msg_buffer;
+    mavlink_status_t stat_buffer;
+    std::mutex state_mtx;
+    MavlinkEndpointState state;
+    std::thread listening_thread;
   };
 
-  MavlinkEndpoint::MavlinkEndpointImpl::MavlinkEndpointImpl() :
-      keep_running_(true),
-      listening_thread_(&MavlinkEndpointImpl::listeningRoutine, this),
-      state_(MavlinkEndpointState::DISCONNECTED),
-      msg_buffer_{ 0 },
-      stat_buffer_{ 0 }
+  MavlinkEndpoint::MavlinkEndpointImpl::MavlinkEndpointImpl(const RegistryUserAccess& reg) :
+      registry(reg),
+      keep_running(true),
+      listening_thread(&MavlinkEndpointImpl::listeningRoutine, this),
+      state(MavlinkEndpointState::DISCONNECTED),
+      msg_buffer{ 0 },
+      stat_buffer{ 0 }
   {
   }
 
   MavlinkEndpoint::MavlinkEndpointImpl::~MavlinkEndpointImpl()
   {
     {
-      std::unique_lock lock(running_mtx_);
-      keep_running_ = false;
+      std::unique_lock lock(running_mtx);
+      keep_running = false;
     }
-    listening_thread_cv_.notify_one();
-    if (listening_thread_.joinable()) {
-      listening_thread_.join();
+    listening_thread_cv.notify_one();
+    if (listening_thread.joinable()) {
+      listening_thread.join();
     }
   }
 
   void MavlinkEndpoint::MavlinkEndpointImpl::waitForConnectionAndListener()
   {
-    TripleLock lock(registry_mtx_, connection_mtx_, running_mtx_);
-    listening_thread_cv_.wait(lock, [&] { return (!keep_running_ || (!listener_cb_registry_.empty() && byte_transport_ != nullptr)); });
+    TripleLock lock(registry_mtx, connection_mtx, running_mtx);
+    listening_thread_cv.wait(lock, [&] { return (!keep_running || (!listener_cb_registry.empty() && byte_transport != nullptr)); });
   }
 
   void MavlinkEndpoint::MavlinkEndpointImpl::listeningRoutine()
@@ -105,12 +109,12 @@ namespace pendarlab::lib::comm
         std::shared_ptr<ByteTransport> transport;
         std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> registry;
         {
-          std::lock_guard lock(connection_mtx_);
-          transport = byte_transport_;
+          std::lock_guard lock(connection_mtx);
+          transport = byte_transport;
         }
         {
-          std::lock_guard lock(registry_mtx_);
-          registry = listener_cb_registry_;
+          std::lock_guard lock(registry_mtx);
+          registry = listener_cb_registry;
         }
         if (!keepRunning() || !transport || registry.empty()) { // If transport does not exist or registry is empty
           break;
@@ -137,15 +141,15 @@ namespace pendarlab::lib::comm
     mavlink_message_t msg;
     mavlink_status_t status;
 
-    uint8_t mavlink_message_received = mavlink_frame_char_buffer(&msg_buffer_, &stat_buffer_, c, &msg, &status);
+    uint8_t mavlink_message_received = mavlink_frame_char_buffer(&msg_buffer, &stat_buffer, c, &msg, &status);
     if (mavlink_message_received == MAVLINK_FRAMING_BAD_CRC || mavlink_message_received == MAVLINK_FRAMING_BAD_SIGNATURE) {
-      _mav_parse_error(&stat_buffer_);
-      stat_buffer_.msg_received = MAVLINK_FRAMING_INCOMPLETE;
-      stat_buffer_.parse_state = MAVLINK_PARSE_STATE_IDLE;
+      _mav_parse_error(&stat_buffer);
+      stat_buffer.msg_received = MAVLINK_FRAMING_INCOMPLETE;
+      stat_buffer.parse_state = MAVLINK_PARSE_STATE_IDLE;
       if (c == MAVLINK_STX) {
-        stat_buffer_.parse_state = MAVLINK_PARSE_STATE_GOT_STX;
-        msg_buffer_.len = 0;
-        mavlink_start_checksum(&msg_buffer_);
+        stat_buffer.parse_state = MAVLINK_PARSE_STATE_GOT_STX;
+        msg_buffer.len = 0;
+        mavlink_start_checksum(&msg_buffer);
       }
       mavlink_message_received = 0;
     }
@@ -161,36 +165,26 @@ namespace pendarlab::lib::comm
 
   void MavlinkEndpoint::MavlinkEndpointImpl::setState(const MavlinkEndpointState& s)
   {
-    std::lock_guard lock(state_mtx_);
-    state_ = s;
+    std::lock_guard lock(state_mtx);
+    state = s;
   }
 
   bool MavlinkEndpoint::MavlinkEndpointImpl::keepRunning()
   {
-    std::lock_guard lock(running_mtx_);
-    return keep_running_;
+    std::lock_guard lock(running_mtx);
+    return keep_running;
   }
 
-  std::shared_ptr<MavlinkEndpoint> MavlinkEndpoint::create()
+  std::shared_ptr<MavlinkEndpoint> MavlinkEndpoint::create(const RegistryUserAccess& reg)
   {
-    return std::make_shared<MavlinkEndpoint>(MavlinkEndpoint());
-  }
-
-  MavlinkEndpoint::ValidationResult MavlinkEndpoint::validateConfig(const std::string& transport_type,
-                                                                          const std::unordered_map<std::string, std::string>& config)
-  {
-    auto validation_result = ByteTransportFactory::validateConfig(transport_type, config);
-    MavlinkEndpoint::ValidationResult result;
-    result.ok = validation_result.ok;
-    result.msg = validation_result.msg;
-    return result;
+    return std::make_shared<MavlinkEndpoint>(MavlinkEndpoint(reg));
   }
 
   MavlinkEndpoint::MavlinkEndpoint(MavlinkEndpoint&&) noexcept = default;
   MavlinkEndpoint& MavlinkEndpoint::operator=(MavlinkEndpoint&&) noexcept = default;
   MavlinkEndpoint::~MavlinkEndpoint() = default;
 
-  MavlinkEndpoint::MavlinkEndpoint() : p_impl_(std::make_unique<MavlinkEndpointImpl>())
+  MavlinkEndpoint::MavlinkEndpoint(const RegistryUserAccess& reg) : d(std::make_unique<MavlinkEndpointImpl>(reg))
   {
   }
 
@@ -198,10 +192,10 @@ namespace pendarlab::lib::comm
   {
     auto token = MavlinkEndpointToken::create(shared_from_this());
     {
-      std::lock_guard lock(p_impl_->registry_mtx_);
-      p_impl_->listener_cb_registry_[token->getID()] = listener_cb;
+      std::lock_guard lock(d->registry_mtx);
+      d->listener_cb_registry[token->getID()] = listener_cb;
     }
-    p_impl_->listening_thread_cv_.notify_one();
+    d->listening_thread_cv.notify_one();
     return token;
   }
 
@@ -211,8 +205,8 @@ namespace pendarlab::lib::comm
     unsigned int len = mavlink_msg_to_send_buffer(write_buffer, &msg);
     std::shared_ptr<ByteTransport> transport;
     {
-      std::lock_guard lock(p_impl_->connection_mtx_);
-      transport = p_impl_->byte_transport_;
+      std::lock_guard lock(d->connection_mtx);
+      transport = d->byte_transport;
     }
     if (!transport) {
       return -1;
@@ -226,19 +220,33 @@ namespace pendarlab::lib::comm
     if (getState() != MavlinkEndpointState::DISCONNECTED) { // Connection process happens only if it is disconnected
       return false;
     }
-    p_impl_->setState(MavlinkEndpointState::CONNECTING);
+    d->setState(MavlinkEndpointState::CONNECTING);
 
-    auto transport = ByteTransportFactory::create(type, cfg);
-    if (!transport) {
-      p_impl_->setState(MavlinkEndpointState::DISCONNECTED);
+    auto transport_def = d->registry[type];
+    if(!transport_def){
+      d->setState(MavlinkEndpointState::DISCONNECTED);
       return false;
     }
-    {
-      std::lock_guard lock(p_impl_->connection_mtx_);
-      p_impl_->byte_transport_ = std::move(transport);
+
+    auto parse_result = transport_def->parseConfig(cfg);
+    if(!parse_result.ok()){
+      d->setState(MavlinkEndpointState::DISCONNECTED);
+      return false;
     }
-    p_impl_->setState(MavlinkEndpointState::CONNECTED);
-    p_impl_->listening_thread_cv_.notify_one();
+
+    auto transport = transport_def->create(parse_result.config.value());
+    if(!transport){
+      d->setState(MavlinkEndpointState::DISCONNECTED);
+      return false;
+    }
+
+    {
+      std::lock_guard lock(d->connection_mtx);
+      d->byte_transport = std::move(transport);
+    }
+    d->setState(MavlinkEndpointState::CONNECTED);
+    d->listening_thread_cv.notify_one();
+
     return true;
   }
 
@@ -249,12 +257,12 @@ namespace pendarlab::lib::comm
       case MavlinkEndpointState::CONNECTING: return false;
 
       case MavlinkEndpointState::CONNECTED:
-        p_impl_->setState(MavlinkEndpointState::DISCONNECTING);
+        d->setState(MavlinkEndpointState::DISCONNECTING);
         {
-          std::lock_guard lock(p_impl_->connection_mtx_);
-          p_impl_->byte_transport_ = nullptr;
+          std::lock_guard lock(d->connection_mtx);
+          d->byte_transport = nullptr;
         }
-        p_impl_->setState(MavlinkEndpointState::DISCONNECTED);
+        d->setState(MavlinkEndpointState::DISCONNECTED);
 
       default: break;
     }
@@ -264,7 +272,7 @@ namespace pendarlab::lib::comm
   std::vector<unsigned int> MavlinkEndpoint::getListenersID()
   {
     std::vector<unsigned int> listenerID_list;
-    for (auto [id, cb] : p_impl_->listener_cb_registry_) {
+    for (auto [id, cb] : d->listener_cb_registry) {
       listenerID_list.push_back(id);
     }
     return listenerID_list;
@@ -274,24 +282,24 @@ namespace pendarlab::lib::comm
   {
     size_t num_of_listener;
     {
-      std::lock_guard lock(p_impl_->registry_mtx_);
-      num_of_listener = p_impl_->listener_cb_registry_.size();
+      std::lock_guard lock(d->registry_mtx);
+      num_of_listener = d->listener_cb_registry.size();
     }
     return num_of_listener;
   }
 
   MavlinkEndpointState MavlinkEndpoint::getState()
   {
-    std::lock_guard lock(p_impl_->state_mtx_);
-    return p_impl_->state_;
+    std::lock_guard lock(d->state_mtx);
+    return d->state;
   }
 
   bool MavlinkEndpoint::removeListener(const int& token_id)
   {
     int result;
     {
-      std::lock_guard lock(p_impl_->registry_mtx_);
-      result = p_impl_->listener_cb_registry_.erase(token_id);
+      std::lock_guard lock(d->registry_mtx);
+      result = d->listener_cb_registry.erase(token_id);
     }
     return result > 0 ? true : false;
   }
