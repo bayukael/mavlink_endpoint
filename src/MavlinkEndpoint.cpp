@@ -234,7 +234,7 @@ namespace pendarlab::lib::comm
       return false;
     }
 
-    auto transport = transport_def->create(parse_result.config.value());
+    auto transport = transport_def->create(*parse_result.config);
     if(!transport){
       d->setState(MavlinkEndpointState::DISCONNECTED);
       return false;
