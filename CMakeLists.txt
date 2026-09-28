@@ -7,11 +7,6 @@ set(NAMESPACE pendarlab)
 set(PACKAGE_FILENAME mavlink_endpoint)
 set(PACKAGE_NAME PendarlabMavlinkEndpoint)
 
-string(REGEX REPLACE "/+$" "" _bt_base "${CMAKE_INSTALL_PREFIX}")
-if(NOT _bt_base MATCHES "/${PROJECT_VERSION}$")
-    set(CMAKE_INSTALL_PREFIX "${_bt_base}/${PROJECT_VERSION}" CACHE PATH "" FORCE)
-endif()
-
 find_package(GTest CONFIG REQUIRED)
 find_package(PendarlabByteTransport 1.0.0 REQUIRED)
 
