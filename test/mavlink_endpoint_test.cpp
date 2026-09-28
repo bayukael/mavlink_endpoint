@@ -40,7 +40,7 @@ std::unique_ptr<ByteTransport> MockByteTransport::create(const std::unordered_ma
 ConfigParseResult MockByteTransport::validateConfig(const std::unordered_map<std::string, std::string>&)
 {
   ConfigParseResult res;
-  res.config = Config();
+  res.config = std::make_unique<Config>();
   return res;
 }
 
@@ -75,7 +75,7 @@ std::unique_ptr<ByteTransport> MockByteTransportDefinition::create(const Config&
 ConfigParseResult MockByteTransportDefinition::parseConfig(const std::unordered_map<std::string, std::string>&) const
 {
   ConfigParseResult res;
-  res.config = Config();
+  res.config = std::make_unique<Config>();
   return res;
 }
 
