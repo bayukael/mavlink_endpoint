@@ -13,7 +13,7 @@ if(NOT _bt_base MATCHES "/${PROJECT_VERSION}$")
 endif()
 
 find_package(GTest CONFIG REQUIRED)
-find_package(PendarlabByteTransport REQUIRED)
+find_package(PendarlabByteTransport 1.0.0 REQUIRED)
 
 add_library(MavlinkEndpoint SHARED
   src/MavlinkEndpoint.cpp
