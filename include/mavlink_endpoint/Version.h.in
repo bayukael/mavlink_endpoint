@@ -1,0 +1,14 @@
+#pragma once
+
+#define PENDARLAB_MAVLINK_ENDPOINT_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define PENDARLAB_MAVLINK_ENDPOINT_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define PENDARLAB_MAVLINK_ENDPOINT_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define PENDARLAB_MAVLINK_ENDPOINT_VERSION "@PROJECT_VERSION@"
+
+namespace pendarlab::lib::comm
+{
+  inline constexpr int versionMajor = PENDARLAB_MAVLINK_ENDPOINT_VERSION_MAJOR;
+  inline constexpr int versionMinor = PENDARLAB_MAVLINK_ENDPOINT_VERSION_MINOR;
+  inline constexpr int versionPatch = PENDARLAB_MAVLINK_ENDPOINT_VERSION_PATCH;
+  inline constexpr const char* version = PENDARLAB_MAVLINK_ENDPOINT_VERSION;
+} // namespace pendarlab::lib::comm

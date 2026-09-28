@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
-project(pendarlab_lib_comm_mavlink_endpoint)
+project(pendarlab_lib_comm_mavlink_endpoint VERSION 1.0.0)
 
-set(PROJECT_VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 set(NAMESPACE pendarlab)
@@ -9,13 +8,21 @@ set(PACKAGE_FILENAME mavlink_endpoint)
 set(PACKAGE_NAME PendarlabMavlinkEndpoint)
 
 find_package(GTest CONFIG REQUIRED)
-find_package(PendarlabByteTransport REQUIRED)
+find_package(PendarlabByteTransport 1.0.0 REQUIRED)
 
 add_library(MavlinkEndpoint SHARED
   src/MavlinkEndpoint.cpp
   src/MavlinkEndpointToken.cpp
 )
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/${PACKAGE_FILENAME}/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/${PACKAGE_FILENAME}/Version.h
+    @ONLY
+)
+
 target_include_directories(MavlinkEndpoint PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include> 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external>
     $<INSTALL_INTERFACE:include> 
@@ -28,7 +35,10 @@ target_link_libraries(MavlinkEndpoint
   PUBLIC pendarlab::ByteTransport
 )
 add_library(${NAMESPACE}::MavlinkEndpoint ALIAS MavlinkEndpoint)
-set_target_properties(MavlinkEndpoint PROPERTIES OUTPUT_NAME pendarlab-mavlink_endpoint)
+set_target_properties(MavlinkEndpoint PROPERTIES OUTPUT_NAME pendarlab-mavlink_endpoint
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+)
 
 
 ##############################################################################
@@ -46,6 +56,11 @@ install(
 install(
 	DIRECTORY include/
 	DESTINATION include
+	PATTERN "*.in" EXCLUDE
+)
+install(
+	FILES ${CMAKE_CURRENT_BINARY_DIR}/include/${PACKAGE_FILENAME}/Version.h
+	DESTINATION include/${PACKAGE_FILENAME}
 )
 install(
 	DIRECTORY external/
