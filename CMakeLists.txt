@@ -8,7 +8,8 @@ set(PACKAGE_FILENAME mavlink_endpoint)
 set(PACKAGE_NAME PendarlabMavlinkEndpoint)
 
 find_package(GTest CONFIG REQUIRED)
-find_package(PendarlabByteTransport 1.0.0 REQUIRED)
+set(BYTE_TRANSPORT_VERSION 1.0.0)
+find_package(PendarlabByteTransport ${BYTE_TRANSPORT_VERSION} REQUIRED)
 
 add_library(MavlinkEndpoint SHARED
   src/MavlinkEndpoint.cpp

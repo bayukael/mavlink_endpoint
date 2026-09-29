@@ -1,4 +1,4 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
-find_dependency(PendarlabByteTransport REQUIRED)
+find_dependency(PendarlabByteTransport @BYTE_TRANSPORT_VERSION@ REQUIRED)
 include("${CMAKE_CURRENT_LIST_DIR}/mavlink_endpoint_targets.cmake")
