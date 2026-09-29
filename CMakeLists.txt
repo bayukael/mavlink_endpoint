@@ -65,7 +65,7 @@ install(
 )
 install(
 	DIRECTORY external/
-	DESTINATION include/${PACKAGE_FILENAME}
+	DESTINATION include
 )
 install(
 	EXPORT ${TARGET_EXPORT_NAME}
