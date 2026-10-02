@@ -107,16 +107,16 @@ namespace pendarlab::lib::comm
 
       while (true) {
         std::shared_ptr<ByteTransport> transport;
-        std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> registry;
+        std::unordered_map<int, std::function<void(const MavlinkEndpointPacket&)>> cb_registry;
         {
           std::lock_guard lock(connection_mtx);
           transport = byte_transport;
         }
         {
           std::lock_guard lock(registry_mtx);
-          registry = listener_cb_registry;
+          cb_registry = listener_cb_registry;
         }
-        if (!keepRunning() || !transport || registry.empty()) { // If transport does not exist or registry is empty
+        if (!keepRunning() || !transport || cb_registry.empty()) { // If transport does not exist or registry is empty
           break;
         }
 
@@ -127,7 +127,7 @@ namespace pendarlab::lib::comm
         for (size_t i = 0; i < bytes_read; i++) {
           auto process_result = processMavlinkMsgByte(buf[i]);
           if (process_result.has_value()) {
-            for (auto [id, cb] : registry) { // Call all callbacks
+            for (auto [id, cb] : cb_registry) { // Call all callbacks
               cb(process_result.value());
             }
           }
