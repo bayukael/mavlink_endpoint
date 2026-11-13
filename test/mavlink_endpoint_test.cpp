@@ -79,6 +79,36 @@ ConfigParseResult MockByteTransportDefinition::parseConfig(const std::unordered_
   return res;
 }
 
+// A transport whose read() always fails by returning a negative value, used to
+// exercise the guard in MavlinkEndpointImpl::listeningRoutine(). Before the fix,
+// a negative read() return was implicitly converted to a huge size_t and drove
+// the byte-processing loop out of bounds (segfault). This transport lets a test
+// prove that a failed read no longer crashes the endpoint.
+class NegativeReadByteTransport : public ByteTransport
+{
+public:
+  NegativeReadByteTransport() = default;
+  ~NegativeReadByteTransport() = default;
+  int read(unsigned char* buf, unsigned int buf_size) override { return -1; }
+  int write(const unsigned char* buf, unsigned int length) override { return -1; }
+};
+
+class NegativeReadByteTransportDefinition : public TransportDefinition
+{
+  std::unique_ptr<ByteTransport> create(const Config& cfg) const override
+  {
+    return std::make_unique<NegativeReadByteTransport>();
+  }
+  ConfigParseResult parseConfig(const std::unordered_map<std::string, std::string>&) const override
+  {
+    ConfigParseResult res;
+    res.config = std::make_unique<Config>();
+    return res;
+  }
+};
+
+static NegativeReadByteTransportDefinition g_negative_read_transport_def;
+
 static MockByteTransportDefinition g_mock_transport_def;
 
 class MockCallback : public std::enable_shared_from_this<MockCallback>
@@ -330,6 +360,49 @@ TEST_F(MavlinkEndpointTransmissionTest, SendingHeartbeatMessageWhenConnectedShou
 
   int write_result = mav_ep_->writeMessage(msg);
   EXPECT_EQ(write_result, 21); // 21 is the number of bytes encoded in a mavlink heartbeat message
+}
+
+// Regression test: a transport that fails every read() with a negative return
+// must not drive the listening routine's byte-processing loop out of bounds
+// (which previously segfaulted). The endpoint is connected with a registered
+// listener so the listening routine actually runs; reaching the assertions
+// (i.e. not crashing) is what verifies the guard.
+class MavlinkEndpointNegativeReadTest : public testing::Test, public MavlinkEndpointTestSetup
+{
+protected:
+  MavlinkEndpointNegativeReadTest() : MavlinkEndpointTestSetup()
+  {
+    registry.addTransportDefinition(negative_type, g_negative_read_transport_def);
+  }
+
+  void SetUp() override
+  {
+    mock_callback_ = MockCallback::create();
+    token_ = mav_ep_->createListener(std::bind(&MockCallback::theCallback, mock_callback_, std::placeholders::_1));
+  }
+  void TearDown() override {}
+
+  const std::string negative_type = "negative_read_transport";
+  std::shared_ptr<MockCallback> mock_callback_;
+  std::unique_ptr<MavlinkEndpointToken> token_;
+};
+
+TEST_F(MavlinkEndpointNegativeReadTest, NegativeReadReturnShouldNotSegfault)
+{
+  ASSERT_EQ(mav_ep_->connect(negative_type, std::unordered_map<std::string, std::string>()), true);
+  ASSERT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
+
+  // Let the listening routine attempt reads (all failing) and then keep running
+  // without crashing. If the guard were missing, the loop would index out of
+  // bounds on -1 and the process would segfault before reaching this point.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  // The failed reads must not have produced any packets for the listener.
+  EXPECT_EQ(mock_callback_->isHasBeenCalled(), false);
+  EXPECT_EQ(mav_ep_->getState(), MavlinkEndpointState::CONNECTED);
+
+  mav_ep_->disconnect();
+  EXPECT_EQ(mav_ep_->getState(), MavlinkEndpointState::DISCONNECTED);
 }
 
 int main(int argc, char* argv[])

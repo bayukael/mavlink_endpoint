@@ -124,7 +124,14 @@ namespace pendarlab::lib::comm
         uint8_t buf[buf_size];
         int bytes_read = transport->read(buf, buf_size);
 
-        for (size_t i = 0; i < bytes_read; i++) {
+        // If read() failed (negative return) it would become a huge value when
+        // implicitly converted to size_t, driving the loop out of bounds. Only
+        // process bytes when at least one was actually read.
+        if (bytes_read <= 0) {
+          continue;
+        }
+
+        for (size_t i = 0; i < static_cast<size_t>(bytes_read); i++) {
           auto process_result = processMavlinkMsgByte(buf[i]);
           if (process_result.has_value()) {
             for (auto [id, cb] : cb_registry) { // Call all callbacks
